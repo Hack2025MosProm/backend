@@ -346,7 +346,7 @@ async def filter_companies(
     organization_type: Optional[str] = Query(None, description="Тип организации"),
     support_measures: Optional[bool] = Query(None, description="Получены ли меры поддержки"),
     special_status: Optional[str] = Query(None, description="Особый статус"),
-    year: Optional[int] = Query(None, description="Год"),
+    years: Optional[List[int]] = Query(None, description="Список годов для фильтрации"),
     limit: int = Query(default=50, ge=1, le=100, description="Количество записей"),
     offset: int = Query(default=0, ge=0, description="Смещение"),
 ):
@@ -365,7 +365,7 @@ async def filter_companies(
             organization_type=organization_type,
             support_measures=support_measures,
             special_status=special_status,
-            year=year,
+            years=years,
             skip=offset,
             limit=limit
         )

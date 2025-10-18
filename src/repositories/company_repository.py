@@ -73,7 +73,7 @@ class CompanyRepository:
         organization_type: str = None,
         support_measures: bool = None,
         special_status: str = None,
-        year: int = None,
+        years: List[int] = None,
         skip: int = 0,
         limit: int = 100
     ) -> List[CompanyRead]:
@@ -101,8 +101,8 @@ class CompanyRepository:
             statement = statement.where(Company.support_measures == support_measures)
         if special_status is not None:
             statement = statement.where(Company.special_status == special_status)
-        if year is not None:
-            statement = statement.where(Company.year == year)
+        if years is not None and len(years) > 0:
+            statement = statement.where(Company.year.in_(years))
 
         statement = statement.offset(skip).limit(limit)
         results = self.session.exec(statement).all()
