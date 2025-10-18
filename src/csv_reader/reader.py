@@ -191,7 +191,7 @@ class AsyncCSVReader:
         companies = await self.read_companies()
 
         for company in companies:
-            if company.get("ИНН") == inn:
+            if str(company.get("ИНН")) == inn:
                 return company
 
         return None
