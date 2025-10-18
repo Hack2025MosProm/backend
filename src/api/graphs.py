@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session, select
+from pydantic import BaseModel, Field
 
 from repositories import CompanyRepository
 from models import User, Token, Company, Graph, GraphType, GraphCreate, GraphRead, UserCompanyLink
@@ -27,6 +28,24 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 router = APIRouter(prefix="/graphs", tags=["graphs"])
 
+# =========================
+# Модели
+# =========================
+
+class BulkDeleteGraphsRequest(BaseModel):
+    """Модель для массового удаления графиков"""
+    graph_ids: List[int] = Field(..., description="Список ID графиков для удаления")
+    delete_all: bool = Field(False, description="Удалить все графики пользователя")
+
+class BulkDeleteResponse(BaseModel):
+    """Модель ответа для массового удаления"""
+    deleted_count: int = Field(..., description="Количество удаленных графиков")
+    deleted_ids: List[int] = Field(..., description="ID удаленных графиков")
+    message: str = Field(..., description="Сообщение о результате")
+
+# =========================
+# Утилиты
+# =========================
 
 def get_company_data_for_user(user: User, company_ids: List[int], session: Session) -> List[Dict[str, Any]]:
     """
@@ -251,6 +270,81 @@ async def get_user_graphs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка при получении графиков"
+        )
+
+
+@router.delete("/bulk", response_model=BulkDeleteResponse)
+async def bulk_delete_graphs(
+    request: BulkDeleteGraphsRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session)
+):
+    """
+    Массовое удаление графиков пользователя
+    """
+    try:
+        deleted_ids = []
+
+        if request.delete_all:
+            # Удаляем все графики пользователя
+            statement = select(Graph).where(Graph.user_id == current_user.id)
+            graphs = session.exec(statement).all()
+
+            for graph in graphs:
+                session.delete(graph)
+                deleted_ids.append(graph.id)
+
+            logger.info(f"Удалены все графики пользователя {current_user.id} (количество: {len(deleted_ids)})")
+            message = f"Удалены все графики пользователя ({len(deleted_ids)} шт.)"
+
+        else:
+            # Удаляем только указанные графики
+            if not request.graph_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Не указаны ID графиков для удаления"
+                )
+
+            # Проверяем, что все графики принадлежат пользователю
+            statement = select(Graph).where(
+                Graph.id.in_(request.graph_ids),
+                Graph.user_id == current_user.id
+            )
+            user_graphs = session.exec(statement).all()
+            user_graph_ids = {graph.id for graph in user_graphs}
+
+            # Проверяем, есть ли графики, которые не принадлежат пользователю
+            invalid_ids = set(request.graph_ids) - user_graph_ids
+            if invalid_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"У вас нет доступа к графикам с ID: {list(invalid_ids)}"
+                )
+
+            # Удаляем графики
+            for graph in user_graphs:
+                session.delete(graph)
+                deleted_ids.append(graph.id)
+
+            logger.info(f"Удалены графики пользователя {current_user.id}: {deleted_ids}")
+            message = f"Удалены графики: {deleted_ids}"
+
+        session.commit()
+
+        return BulkDeleteResponse(
+            deleted_count=len(deleted_ids),
+            deleted_ids=deleted_ids,
+            message=message
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Ошибка при массовом удалении графиков: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при массовом удалении графиков"
         )
 
 
