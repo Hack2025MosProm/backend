@@ -152,3 +152,54 @@ class Company(SQLModel, table=True):
         back_populates="companies",
         link_model=UserCompanyLink
     )
+
+
+class GraphType(str, Enum):
+    treemap_prod = "treemap_prod"
+    scatter_busy = "scatter_busy"
+    norm_export = "norm_export"
+    pie_prod = "pie_prod"
+    area_ecology = "area_ecology"
+    hist_energy = "hist_energy"
+    table_invest = "table_invest"
+
+
+class GraphCreate(SQLModel):
+    graph_type: GraphType = Field(description="Тип графика")
+    company_ids: List[int] = Field(description="Список ID компаний для генерации графика")
+
+
+class GraphRead(SQLModel):
+    id: int
+    graph_type: GraphType
+    user_id: int
+    company_ids: List[int]
+    graph_data: Dict[str, Any]
+    created_at: datetime.datetime
+
+
+class Graph(SQLModel, table=True):
+    __tablename__ = "graphs"
+    id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        nullable=False,
+        index=True,
+        sa_column_kwargs={"autoincrement": True}
+    )
+    graph_type: GraphType = Field(description="Тип графика")
+    user_id: int = Field(foreign_key="users.id", description="ID пользователя")
+    company_ids: List[int] = Field(
+        description="Список ID компаний для генерации графика",
+        sa_column=Column(JSON, nullable=False)
+    )
+    graph_data: Dict[str, Any] = Field(
+        description="JSON данные графика",
+        sa_column=Column(JSON, nullable=False)
+    )
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
