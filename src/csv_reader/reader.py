@@ -107,6 +107,7 @@ class AsyncCSVReader:
             "organization_type": row.get("Вид организации"),
             "support_measures": self._parse_support_measures(row.get("Данные об оказанных мерах поддержки")),
             "special_status": self._parse_special_status(row.get("Наличие особого статуса")),
+            "year": row.get("Год"),
         }
 
     async def read_companies(self) -> List[Dict[str, Any]]:

@@ -174,6 +174,7 @@ async def upload_csv_file(
                 company = Company(
                     inn=int(key_field["inn"]) if key_field["inn"] else 0,
                     name=key_field["name"] or "",
+                    year=key_field["year"] or 0,
                     full_name=key_field["full_name"] or "",
                     spark_status=key_field["spark_status"] or "",
                     main_industry=key_field["main_industry"] or "",

@@ -77,11 +77,26 @@ class Token(SQLModel, table=True):
             datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=settings.access_token_expire_minutes)
     )
 
+class ConfirmationStatus(str, Enum):
+    confirmed = "Подтверждён"
+    user_confirmed = "Подтверждён пользователем"
+    not_confirmed = "Не подтверждён"
 
 class CompanyCreate(SQLModel):
-    name: str = Field(description="Название компании")
     inn: int = Field(description="ИНН компании", sa_column=Column(BigInteger))
-    confirmed_by: Optional[str] = Field(description="Кто подтвердил компанию")
+    name: str = Field(description="Название компании")
+    full_name: str = Field(description="Полное наименование компании")
+    year: int = Field(description="Год")
+
+    # main metrics
+    spark_status: str = Field(description="Статус СПАРК")
+    main_industry: str = Field(description="Основная отрасль")
+    company_size_final: str = Field(description="Размер предприятия (итог)")
+    organization_type: Optional[str] = Field(description="Тип организации")
+    support_measures: Optional[bool] = Field(description="Получены ли меры поддержки")
+    special_status: Optional[str] = Field(description="Специальный статус")
+
+    confirmation_status: ConfirmationStatus = Field(default=ConfirmationStatus.not_confirmed)
     confirmed_at: Optional[datetime.datetime] = Field(description="Когда подтвердили компанию")
     confirmer_identifier: Optional[str] = Field(description="Идентификатор (логин или имя системы)")
     json_data: Dict[str, Any] = Field(
@@ -93,29 +108,45 @@ class CompanyCreate(SQLModel):
 class CompanyRead(SQLModel):
     id: int
     name: str
+    full_name: str
     inn: int = Field(sa_column=Column(BigInteger))
-    confirmed_by: Optional[str] = Field(description="Кто подтвердил компанию")
+    year: int
+
+    # main metrics
+    spark_status: str
+    main_industry: str
+    company_size_final: str
+    organization_type: Optional[str] = None
+    support_measures: Optional[bool] = None
+    special_status: Optional[str] = None
+
+    confirmation_status: ConfirmationStatus
     confirmed_at: Optional[datetime.datetime] = Field(description="Когда подтвердили компанию")
     confirmer_identifier: Optional[str] = Field(description="Идентификатор (логин или имя системы)")
-    json_data: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSON, nullable=False)
-    )
+    json_data: Dict[str, Any]
+
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
 
 class CompanyUpdate(SQLModel):
     name: Optional[str] = Field(description="Название компании")
+    full_name: Optional[str] = Field(description="Полное наименование компании")
     inn: Optional[int] = Field(description="ИНН компании", sa_column=Column(BigInteger))
-    confirmed_by: Optional[str] = Field(description="Кто подтвердил компанию")
+    year: Optional[int] = Field(description="Год")
+
+    # main metrics
+    spark_status: Optional[str] = Field(description="Статус СПАРК")
+    main_industry: Optional[str] = Field(description="Основная отрасль")
+    company_size_final: Optional[str] = Field(description="Размер предприятия (итог)")
+    organization_type: Optional[str] = Field(description="Тип организации")
+    support_measures: Optional[bool] = Field(description="Получены ли меры поддержки")
+    special_status: Optional[str] = Field(description="Специальный статус")
+
+    confirmation_status: Optional[ConfirmationStatus] = None
     confirmed_at: Optional[datetime.datetime] = Field(description="Когда подтвердили компанию")
     confirmer_identifier: Optional[str] = Field(description="Идентификатор (логин или имя системы)")
-    json_data: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
-
-
-class ConfirmationStatus(str, Enum):
-    confirmed = "Подтверждён"
-    user_confirmed = "Подтверждён пользователем"
-    not_confirmed = "Не подтверждён"
+    json_data: Optional[Dict[str, Any]] = None
 
 
 class Company(SQLModel, table=True):
@@ -127,9 +158,11 @@ class Company(SQLModel, table=True):
         index=True,
         sa_column_kwargs={"autoincrement": True}
     )
-    inn: int = Field(description="ИНН компании", sa_column=Column(BigInteger))
     name: str = Field(description="Название компании")
     full_name: str = Field(description="Полное наименование компании")
+    inn: int = Field(description="ИНН компании", sa_column=Column(BigInteger))
+    year: int = Field(description="Год")
+
     spark_status: str = Field(description="Статус СПАРК")
     main_industry: str = Field(description="Основная отрасль")
     company_size_final: str = Field(description="Размер предприятия (итог)")

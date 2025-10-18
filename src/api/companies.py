@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from api.auth import get_current_user
 from database.database import db
 from logging_config import LOGGING_CONFIG, ColoredFormatter
-from models import Company, User, UserCompanyLink
+from models import Company, User, UserCompanyLink, ConfirmationStatus, CompanyUpdate, CompanyRead
 
 # Setup logging
 dictConfig(LOGGING_CONFIG)
@@ -32,15 +32,21 @@ class CompanyUpdateRequest(BaseModel):
     """Модель для обновления основных полей компании"""
     name: Optional[str] = Field(None, description="Название компании")
     full_name: Optional[str] = Field(None, description="Полное наименование компании")
+    inn: Optional[int] = Field(None, description="ИНН компании")
+    year: Optional[int] = Field(None, description="Год")
     spark_status: Optional[str] = Field(None, description="Статус СПАРК")
     main_industry: Optional[str] = Field(None, description="Основная отрасль")
     company_size_final: Optional[str] = Field(None, description="Размер предприятия (итог)")
     organization_type: Optional[str] = Field(None, description="Тип организации")
     support_measures: Optional[bool] = Field(None, description="Меры поддержки")
     special_status: Optional[str] = Field(None, description="Особый статус")
+    confirmation_status: Optional[ConfirmationStatus] = Field(None, description="Статус подтверждения")
+    confirmed_at: Optional[datetime] = Field(None, description="Когда подтвердили компанию")
+    confirmer_identifier: Optional[str] = Field(None, description="Идентификатор подтверждающего")
 
 class CompanyKeyMetricsUpdate(BaseModel):
     """Модель для обновления ключевых метрик"""
+    spark_status: Optional[str] = Field(None, description="Статус СПАРК")
     main_industry: Optional[str] = Field(None, description="Основная отрасль")
     company_size_final: Optional[str] = Field(None, description="Размер предприятия (итог)")
     organization_type: Optional[str] = Field(None, description="Тип организации")
@@ -57,15 +63,17 @@ class CompanyResponse(BaseModel):
     inn: int
     name: str
     full_name: str
+    year: int
     spark_status: str
     main_industry: str
     company_size_final: str
     organization_type: Optional[str] = None
     support_measures: Optional[bool] = None
     special_status: Optional[str] = None
-    confirmation_status: str
+    confirmation_status: ConfirmationStatus
     confirmed_at: Optional[datetime] = None
     confirmer_identifier: Optional[str] = None
+    json_data: Dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -134,15 +142,17 @@ async def get_user_companies(
                 inn=company.inn,
                 name=company.name,
                 full_name=company.full_name,
+                year=company.year,
                 spark_status=company.spark_status,
                 main_industry=company.main_industry,
                 company_size_final=company.company_size_final,
                 organization_type=company.organization_type,
                 support_measures=company.support_measures,
                 special_status=company.special_status,
-                confirmation_status=company.confirmation_status.value,
+                confirmation_status=company.confirmation_status,
                 confirmed_at=company.confirmed_at,
                 confirmer_identifier=company.confirmer_identifier,
+                json_data=company.json_data,
                 created_at=company.created_at,
                 updated_at=company.updated_at
             )
@@ -182,15 +192,17 @@ async def get_company(
             inn=company.inn,
             name=company.name,
             full_name=company.full_name,
+            year=company.year,
             spark_status=company.spark_status,
             main_industry=company.main_industry,
             company_size_final=company.company_size_final,
             organization_type=company.organization_type,
             support_measures=company.support_measures,
             special_status=company.special_status,
-            confirmation_status=company.confirmation_status.value,
+            confirmation_status=company.confirmation_status,
             confirmed_at=company.confirmed_at,
             confirmer_identifier=company.confirmer_identifier,
+            json_data=company.json_data,
             created_at=company.created_at,
             updated_at=company.updated_at
         )
@@ -239,15 +251,17 @@ async def update_company(
             inn=company.inn,
             name=company.name,
             full_name=company.full_name,
+            year=company.year,
             spark_status=company.spark_status,
             main_industry=company.main_industry,
             company_size_final=company.company_size_final,
             organization_type=company.organization_type,
             support_measures=company.support_measures,
             special_status=company.special_status,
-            confirmation_status=company.confirmation_status.value,
+            confirmation_status=company.confirmation_status,
             confirmed_at=company.confirmed_at,
             confirmer_identifier=company.confirmer_identifier,
+            json_data=company.json_data,
             created_at=company.created_at,
             updated_at=company.updated_at
         )
@@ -297,15 +311,17 @@ async def update_company_key_metrics(
             inn=company.inn,
             name=company.name,
             full_name=company.full_name,
+            year=company.year,
             spark_status=company.spark_status,
             main_industry=company.main_industry,
             company_size_final=company.company_size_final,
             organization_type=company.organization_type,
             support_measures=company.support_measures,
             special_status=company.special_status,
-            confirmation_status=company.confirmation_status.value,
+            confirmation_status=company.confirmation_status,
             confirmed_at=company.confirmed_at,
             confirmer_identifier=company.confirmer_identifier,
+            json_data=company.json_data,
             created_at=company.created_at,
             updated_at=company.updated_at
         )
