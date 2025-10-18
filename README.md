@@ -294,11 +294,6 @@ pip install -r requirements.txt
 
 - **Документация**: [docs/api.v1.md](docs/api.v1.md)
 - **Issues**: GitHub Issues
-- **Email**: support@example.com
-
-## 📄 Лицензия
-
-MIT License - см. файл [LICENSE](LICENSE) для деталей.
 
 ---
 
