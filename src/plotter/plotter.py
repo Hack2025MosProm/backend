@@ -280,7 +280,7 @@ class Plotter:
             .agg({
                 "Выручка предприятия, тыс. руб": "sum",
                 "Чистая прибыль (убыток),тыс. руб.": "sum",
-                "Инвестиции в Мск тыс. руб.": "sum"  # Убрали лишний пробел
+                "Инвестиции в Мск  тыс. руб.": "sum"
             })
             .round(0)
             .sort_values(["Наименование организации", "Год"])
@@ -302,7 +302,7 @@ class Plotter:
             years.extend(group["Год"].tolist())
             revenues.extend(group["Выручка предприятия, тыс. руб"].tolist())
             profits.extend(group["Чистая прибыль (убыток),тыс. руб."].tolist())
-            investments.extend(group["Инвестиции в Мск тыс. руб."].tolist())
+            investments.extend(group["Инвестиции в Мск  тыс. руб."].tolist())
 
             color = 'white' if color_index % 2 == 0 else 'lightgrey'
             fill_colors.extend([color] * org_rows)
@@ -319,7 +319,7 @@ class Plotter:
                             "Год",
                             "Выручка предприятия, тыс. руб",
                             "Чистая прибыль (убыток), тыс. руб.",
-                            "Инвестиции в Мск, тыс. руб."
+                            "Инвестиции в Мск  тыс. руб."
                         ],
                         fill_color="lightgrey",
                         align="center",
