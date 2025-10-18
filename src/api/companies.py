@@ -13,6 +13,7 @@ from api.auth import get_current_user
 from database.database import db
 from logging_config import LOGGING_CONFIG, ColoredFormatter
 from models import Company, User, UserCompanyLink, ConfirmationStatus, CompanyUpdate, CompanyRead
+from repositories.company_repository import CompanyRepository
 
 # Setup logging
 dictConfig(LOGGING_CONFIG)
@@ -57,29 +58,9 @@ class CompanyJsonDataUpdate(BaseModel):
     """Модель для обновления JSON данных"""
     json_data: Dict[str, Any] = Field(..., description="Полные JSON данные компании")
 
-class CompanyResponse(BaseModel):
-    """Модель ответа с информацией о компании"""
-    id: int
-    inn: int
-    name: str
-    full_name: str
-    year: int
-    spark_status: str
-    main_industry: str
-    company_size_final: str
-    organization_type: Optional[str] = None
-    support_measures: Optional[bool] = None
-    special_status: Optional[str] = None
-    confirmation_status: ConfirmationStatus
-    confirmed_at: Optional[datetime] = None
-    confirmer_identifier: Optional[str] = None
-    json_data: Dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-
 class CompanyListResponse(BaseModel):
     """Модель ответа со списком компаний"""
-    companies: List[CompanyResponse]
+    companies: List[CompanyRead]
     total: int
     limit: int
     offset: int
@@ -137,7 +118,7 @@ async def get_user_companies(
         companies = session.exec(statement).all()
 
         company_responses = [
-            CompanyResponse(
+            CompanyRead(
                 id=company.id,
                 inn=company.inn,
                 name=company.name,
@@ -175,7 +156,58 @@ async def get_user_companies(
     finally:
         session.close()
 
-@router.get("/{company_id}", response_model=CompanyResponse)
+@router.get("/filter", response_model=CompanyListResponse)
+async def filter_companies(
+    current_user: User = Depends(get_current_user),
+    spark_status: Optional[str] = Query(None, description="Статус СПАРК"),
+    main_industry: Optional[str] = Query(None, description="Основная отрасль"),
+    company_size_final: Optional[str] = Query(None, description="Размер предприятия"),
+    organization_type: Optional[str] = Query(None, description="Тип организации"),
+    support_measures: Optional[bool] = Query(None, description="Получены ли меры поддержки"),
+    special_status: Optional[str] = Query(None, description="Особый статус"),
+    year: Optional[int] = Query(None, description="Год"),
+    limit: int = Query(default=50, ge=1, le=100, description="Количество записей"),
+    offset: int = Query(default=0, ge=0, description="Смещение"),
+):
+    """Фильтровать компании пользователя по метрикам"""
+    logger.info(f"Filtering companies for user: {current_user.username}")
+
+    session = get_session()
+    try:
+        # Используем репозиторий для фильтрации с автоматической фильтрацией по пользователю
+        company_repo = CompanyRepository(session)
+        companies = company_repo.filter_by_metrics(
+            user_id=current_user.id,
+            spark_status=spark_status,
+            main_industry=main_industry,
+            company_size_final=company_size_final,
+            organization_type=organization_type,
+            support_measures=support_measures,
+            special_status=special_status,
+            year=year,
+            skip=offset,
+            limit=limit
+        )
+
+        logger.info(f"Found {len(companies)} companies matching filters for user {current_user.username}")
+
+        return CompanyListResponse(
+            companies=companies,
+            total=len(companies),
+            limit=limit,
+            offset=offset
+        )
+
+    except Exception as e:
+        logger.error(f"Error filtering companies: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to filter companies"
+        )
+    finally:
+        session.close()
+
+@router.get("/{company_id}", response_model=CompanyRead)
 async def get_company(
     company_id: int,
     current_user: User = Depends(get_current_user),
@@ -187,7 +219,7 @@ async def get_company(
     try:
         company = check_company_ownership(company_id, current_user.id, session)
 
-        return CompanyResponse(
+        return CompanyRead(
             id=company.id,
             inn=company.inn,
             name=company.name,
@@ -218,7 +250,9 @@ async def get_company(
     finally:
         session.close()
 
-@router.patch("/{company_id}", response_model=CompanyResponse)
+
+
+@router.patch("/{company_id}", response_model=CompanyRead)
 async def update_company(
     company_id: int,
     update_data: CompanyUpdateRequest,
@@ -246,7 +280,7 @@ async def update_company(
 
         logger.info(f"Company {company_id} updated successfully")
 
-        return CompanyResponse(
+        return CompanyRead(
             id=company.id,
             inn=company.inn,
             name=company.name,
@@ -278,7 +312,7 @@ async def update_company(
     finally:
         session.close()
 
-@router.patch("/{company_id}/key-metrics", response_model=CompanyResponse)
+@router.patch("/{company_id}/key-metrics", response_model=CompanyRead)
 async def update_company_key_metrics(
     company_id: int,
     metrics_data: CompanyKeyMetricsUpdate,
@@ -306,7 +340,7 @@ async def update_company_key_metrics(
 
         logger.info(f"Key metrics for company {company_id} updated successfully")
 
-        return CompanyResponse(
+        return CompanyRead(
             id=company.id,
             inn=company.inn,
             name=company.name,
