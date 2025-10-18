@@ -14,6 +14,7 @@ from database.database import db
 from logging_config import LOGGING_CONFIG, ColoredFormatter
 from models import Company, User, UserCompanyLink, ConfirmationStatus, CompanyUpdate, CompanyRead
 from repositories.company_repository import CompanyRepository
+from csv_reader.reader import AsyncCSVReader
 
 # Setup logging
 dictConfig(LOGGING_CONFIG)
@@ -57,6 +58,42 @@ class CompanyKeyMetricsUpdate(BaseModel):
 class CompanyJsonDataUpdate(BaseModel):
     """Модель для обновления JSON данных"""
     json_data: Dict[str, Any] = Field(..., description="Полные JSON данные компании")
+
+class CompanyJsonCreate(BaseModel):
+    """Модель для создания компании из JSON данных"""
+    number: Optional[int] = Field(None, alias="№", description="Номер записи")
+    inn: int = Field(..., alias="ИНН", description="ИНН компании")
+    name: str = Field(..., alias="Наименование организации", description="Название организации")
+    main_industry: str = Field(..., alias="Основная отрасль", description="Основная отрасль")
+    sub_industry: Optional[str] = Field(None, alias="Подотрасль (Основная)", description="Подотрасль")
+    support_measures: Optional[str] = Field(None, alias="Данные об оказанных мерах поддержки", description="Меры поддержки")
+    special_status: Optional[str] = Field(None, alias="Наличие особого статуса", description="Особый статус")
+    revenue: Optional[float] = Field(None, alias="Выручка предприятия, тыс. руб", description="Выручка")
+    net_profit: Optional[float] = Field(None, alias="Чистая прибыль (убыток),тыс. руб.", description="Чистая прибыль")
+    staff_count: Optional[int] = Field(None, alias="Среднесписочная численность персонала, работающего в Москве, чел", description="Численность персонала")
+    payroll_fund: Optional[float] = Field(None, alias="Фонд оплаты труда  сотрудников, работающих в Москве, тыс. руб.", description="Фонд оплаты труда")
+    avg_salary: Optional[float] = Field(None, alias="Средняя з.п. сотрудников, работающих в Москве,  тыс.руб.", description="Средняя зарплата")
+    moscow_taxes: Optional[float] = Field(None, alias="Налоги, уплаченные в бюджет Москвы (без акцизов), тыс.руб.", description="Налоги в бюджет Москвы")
+    profit_tax: Optional[float] = Field(None, alias="Налог на прибыль, тыс.руб.", description="Налог на прибыль")
+    property_tax: Optional[float] = Field(None, alias="Налог на имущество, тыс.руб.", description="Налог на имущество")
+    land_tax: Optional[float] = Field(None, alias="Налог на землю, тыс.руб.", description="Налог на землю")
+    income_tax: Optional[float] = Field(None, alias="НДФЛ, тыс.руб.", description="НДФЛ")
+    transport_tax: Optional[float] = Field(None, alias="Транспортный налог, тыс.руб.", description="Транспортный налог")
+    other_taxes: Optional[float] = Field(None, alias="Прочие налоги", description="Прочие налоги")
+    excise_taxes: Optional[float] = Field(None, alias="Акцизы, тыс. руб.", description="Акцизы")
+    moscow_investments: Optional[float] = Field(None, alias="Инвестиции в Мск  тыс. руб.", description="Инвестиции в Москву")
+    export_volume: Optional[float] = Field(None, alias="Объем экспорта, тыс. руб.", description="Объем экспорта")
+    capacity_utilization: Optional[int] = Field(None, alias="Уровень загрузки производственных мощностей", description="Уровень загрузки")
+    has_export: Optional[str] = Field(None, alias="Наличие поставок продукции на экспорт", description="Наличие экспорта")
+    prev_year_export: Optional[float] = Field(None, alias="Объем экспорта (млн руб.) за предыдущий календарный год", description="Объем экспорта за предыдущий год")
+    production_coordinates: Optional[str] = Field(None, alias="Координаты адреса производства", description="Координаты производства")
+    district: Optional[str] = Field(None, alias="Округ", description="Округ")
+    area: Optional[str] = Field(None, alias="Район", description="Район")
+    year: int = Field(..., alias="Год", description="Год")
+    confirmed: Optional[str] = Field(None, alias="Подтвержден", description="Статус подтверждения")
+    confirmed_by: Optional[str] = Field(None, alias="Кем подтвержден", description="Кем подтвержден")
+    organization_type: Optional[str] = Field(None, alias="Вид организации", description="Вид организации")
+    last_modified: Optional[str] = Field(None, alias="Дата последнего изменения", description="Дата последнего изменения")
 
 class CompanyListResponse(BaseModel):
     """Модель ответа со списком компаний"""
@@ -437,6 +474,142 @@ async def get_company_json_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get JSON data"
+        )
+    finally:
+        session.close()
+
+@router.post("/create-from-json", response_model=CompanyRead)
+async def create_company_from_json(
+    json_data: CompanyJsonCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Создать компанию из JSON данных"""
+    logger.info(f"Creating company from JSON for user: {current_user.username}")
+
+    session = get_session()
+    try:
+        # Преобразуем Pydantic модель в словарь
+        json_dict = json_data.model_dump()
+
+        # Используем статический метод из AsyncCSVReader для создания компании
+        company_data = AsyncCSVReader.create_company_from_json(json_dict)
+
+        # Проверяем, не существует ли уже компания с таким ИНН и годом
+        existing_company = session.exec(
+            select(Company).where(
+                Company.inn == company_data["inn"],
+                Company.year == company_data["year"]
+            )
+        ).first()
+
+        if existing_company:
+            # Проверяем, не принадлежит ли уже эта компания пользователю
+            existing_link = session.exec(
+                select(UserCompanyLink).where(
+                    UserCompanyLink.user_id == current_user.id,
+                    UserCompanyLink.company_id == existing_company.id
+                )
+            ).first()
+
+            if existing_link:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Компания с таким ИНН и годом уже существует у пользователя"
+                )
+            else:
+                # Компания существует, но не принадлежит пользователю - добавляем связь
+                user_company_link = UserCompanyLink(
+                    user_id=current_user.id,
+                    company_id=existing_company.id
+                )
+                session.add(user_company_link)
+                session.commit()
+
+                logger.info(f"Added existing company {existing_company.id} to user {current_user.id}")
+
+                # Преобразуем существующую компанию в CompanyRead
+                return CompanyRead(
+                    id=existing_company.id,
+                    name=existing_company.name,
+                    full_name=existing_company.full_name,
+                    inn=existing_company.inn,
+                    year=existing_company.year,
+                    spark_status=existing_company.spark_status,
+                    main_industry=existing_company.main_industry,
+                    company_size_final=existing_company.company_size_final,
+                    organization_type=existing_company.organization_type,
+                    support_measures=existing_company.support_measures,
+                    special_status=existing_company.special_status,
+                    confirmation_status=existing_company.confirmation_status,
+                    confirmed_at=existing_company.confirmed_at,
+                    confirmer_identifier=existing_company.confirmer_identifier,
+                    json_data=existing_company.json_data,
+                    created_at=existing_company.created_at,
+                    updated_at=existing_company.updated_at
+                )
+
+        # Создаем новую компанию
+        company = Company(
+            inn=company_data["inn"],
+            name=company_data["name"],
+            full_name=company_data["full_name"],
+            year=company_data["year"],
+            spark_status=company_data["spark_status"],
+            main_industry=company_data["main_industry"],
+            company_size_final=company_data["company_size_final"],
+            organization_type=company_data["organization_type"],
+            support_measures=company_data["support_measures"],
+            special_status=company_data["special_status"],
+            confirmation_status=company_data["confirmation_status"],
+            confirmed_at=company_data["confirmed_at"],
+            confirmer_identifier=company_data["confirmer_identifier"],
+            json_data=company_data["json_data"]
+        )
+
+        session.add(company)
+        session.flush()  # Получаем ID
+
+        # Создаем связь пользователя с компанией
+        user_company_link = UserCompanyLink(
+            user_id=current_user.id,
+            company_id=company.id
+        )
+        session.add(user_company_link)
+
+        session.commit()
+        session.refresh(company)
+
+        logger.info(f"Created new company {company.id} for user {current_user.id}")
+
+        # Преобразуем в CompanyRead
+        return CompanyRead(
+            id=company.id,
+            name=company.name,
+            full_name=company.full_name,
+            inn=company.inn,
+            year=company.year,
+            spark_status=company.spark_status,
+            main_industry=company.main_industry,
+            company_size_final=company.company_size_final,
+            organization_type=company.organization_type,
+            support_measures=company.support_measures,
+            special_status=company.special_status,
+            confirmation_status=company.confirmation_status,
+            confirmed_at=company.confirmed_at,
+            confirmer_identifier=company.confirmer_identifier,
+            json_data=company.json_data,
+            created_at=company.created_at,
+            updated_at=company.updated_at
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating company from JSON: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create company from JSON: {e}"
         )
     finally:
         session.close()

@@ -4,6 +4,7 @@ import logging
 from logging.config import dictConfig
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 import aiofiles
 
@@ -195,6 +196,144 @@ class AsyncCSVReader:
 
         return None
 
+    @staticmethod
+    def create_company_from_json(json_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Создает объект компании из JSON данных.
+
+        Args:
+            json_data: Словарь с данными компании в формате JSON
+
+        Returns:
+            Словарь с данными компании в формате CompanyCreate
+        """
+        logger.debug(f"Creating company from JSON: {json_data}")
+        try:
+            # Извлекаем основные поля - поддерживаем как старые, так и новые ключи
+            inn = int(json_data.get("ИНН") or json_data.get("inn", 0))
+            name = json_data.get("Наименование организации") or json_data.get("name", "")
+            full_name = json_data.get("Наименование организации") or json_data.get("name", "")
+            year = int(json_data.get("Год") or json_data.get("year", 2021))
+
+            # Основные метрики
+            main_industry = json_data.get("Основная отрасль") or json_data.get("main_industry", "")
+            organization_type = json_data.get("Вид организации") or json_data.get("organization_type", "")
+
+            # Определяем размер компании
+            revenue = json_data.get("Выручка предприятия, тыс. руб") or json_data.get("revenue", 0)
+            if isinstance(revenue, str):
+                revenue = float(revenue.replace(",", ".")) if revenue else 0
+
+            company_size = "Крупное" if revenue >= 2000000 else "Среднее" if revenue >= 800000 else "Малое"
+
+            # Меры поддержки
+            support_measures = json_data.get("Данные об оказанных мерах поддержки") or json_data.get("support_measures", "Нет")
+            support_measures_bool = support_measures.lower() in ["да", "yes", "true", "1"]
+
+            # Особый статус
+            special_status = json_data.get("Наличие особого статуса") or json_data.get("special_status", "Сведения отсутствуют")
+
+            # Статус подтверждения
+            confirmed = json_data.get("Подтвержден") or json_data.get("confirmed", "Не подтвержден")
+            confirmation_status = "confirmed" if confirmed == "Подтвержден" else "not_confirmed"
+
+            # Кем подтвержден
+            confirmer = json_data.get("Кем подтвержден") or json_data.get("confirmed_by", "")
+            confirmed_at = None
+            if confirmed == "Подтвержден" and confirmer:
+                confirmed_at = datetime.now()
+
+            # Создаем объект компании
+            company_data = {
+                "inn": inn,
+                "name": name,
+                "full_name": full_name,
+                "year": year,
+                "spark_status": "Активная",  # По умолчанию
+                "main_industry": main_industry,
+                "company_size_final": company_size,
+                "organization_type": organization_type,
+                "support_measures": support_measures_bool,
+                "special_status": special_status,
+                "confirmation_status": confirmation_status,
+                "confirmed_at": confirmed_at,
+                "confirmer_identifier": confirmer,
+                "json_data": json_data  # Сохраняем все исходные данные
+            }
+
+            logger.debug(f"Created company from JSON: {company_data}")
+            logger.debug(f"Created company from JSON: {name} (ИНН: {inn})")
+            return company_data
+
+        except Exception as e:
+            logger.error(f"Error creating company from JSON: {e}")
+            raise ValueError(f"Не удалось создать компанию из JSON: {e}")
+
+    @staticmethod
+    async def read_json_file(file_path: str) -> List[Dict[str, Any]]:
+        """
+        Читает JSON файл и возвращает список компаний.
+
+        Args:
+            file_path: Путь к JSON файлу
+
+        Returns:
+            Список словарей с данными компаний
+        """
+        try:
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as file:
+                content = await file.read()
+                data = json.loads(content)
+
+                # Если это список компаний
+                if isinstance(data, list):
+                    return data
+                # Если это одна компания
+                elif isinstance(data, dict):
+                    return [data]
+                else:
+                    raise ValueError("JSON файл должен содержать объект или массив объектов")
+
+        except FileNotFoundError:
+            logger.error(f"JSON файл не найден: {file_path}")
+            raise FileNotFoundError(f"JSON файл не найден: {file_path}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка парсинга JSON: {e}")
+            raise ValueError(f"Ошибка парсинга JSON: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка чтения JSON файла: {e}")
+            raise
+
+    @staticmethod
+    async def create_companies_from_json_file(file_path: str) -> List[Dict[str, Any]]:
+        """
+        Читает JSON файл и создает объекты компаний.
+
+        Args:
+            file_path: Путь к JSON файлу
+
+        Returns:
+            Список объектов компаний в формате CompanyCreate
+        """
+        try:
+            json_data = await AsyncCSVReader.read_json_file(file_path)
+            companies = []
+
+            for item in json_data:
+                try:
+                    company = AsyncCSVReader.create_company_from_json(item)
+                    companies.append(company)
+                except Exception as e:
+                    logger.warning(f"Пропущена компания из-за ошибки: {e}")
+                    continue
+
+            logger.info(f"Создано {len(companies)} компаний из JSON файла: {file_path}")
+            return companies
+
+        except Exception as e:
+            logger.error(f"Ошибка создания компаний из JSON файла: {e}")
+            raise
+
     async def get_companies_by_industry(self, industry: str) -> List[Dict[str, Any]]:
         """
         Находит компании по отрасли
@@ -340,7 +479,112 @@ if __name__ == "__main__":
                 print(f"\n--- Компания с поддержкой {i} ---")
                 print(json.dumps(company, ensure_ascii=False, indent=2))
 
-        print("\n=== Пример 8: Анализ особых статусов ===")
+        print("\n=== Пример 8: Работа с JSON данными ===")
+        # Пример JSON данных компании
+        sample_json = {
+            "№": 2,
+            "ИНН": 7721840520,
+            "Наименование организации": "ООО \"РУ КМЗ\"",
+            "Основная отрасль": "Машиностроение",
+            "Подотрасль (Основная)": "Металлообработка",
+            "Данные об оказанных мерах поддержки": "Да",
+            "Наличие особого статуса": "Сведения отсутствуют",
+            "Выручка предприятия, тыс. руб": 1320000,
+            "Чистая прибыль (убыток),тыс. руб.": 92000,
+            "Среднесписочная численность персонала, работающего в Москве, чел": 125,
+            "Фонд оплаты труда  сотрудников, работающих в Москве, тыс. руб.": 90000,
+            "Средняя з.п. сотрудников, работающих в Москве,  тыс.руб.": 72,
+            "Налоги, уплаченные в бюджет Москвы (без акцизов), тыс.руб.": 29800,
+            "Налог на прибыль, тыс.руб.": 16000,
+            "Налог на имущество, тыс.руб.": 5000,
+            "Налог на землю, тыс.руб.": 1250,
+            "НДФЛ, тыс.руб.": 6800,
+            "Транспортный налог, тыс.руб.": 320,
+            "Прочие налоги": 530,
+            "Акцизы, тыс. руб.": 0,
+            "Инвестиции в Мск  тыс. руб.": 18000,
+            "Объем экспорта, тыс. руб.": 280000,
+            "Уровень загрузки производственных мощностей": 80,
+            "Наличие поставок продукции на экспорт": "Да",
+            "Объем экспорта (млн руб.) за предыдущий календарный год": 200,
+            "Координаты адреса производства": "55.802968. 37.580095",
+            "Округ": "САО",
+            "Район": "Савеловский",
+            "Год": 2021,
+            "Подтвержден": "Подтвержден",
+            "Кем подтвержден": "Росстат",
+            "Вид организации": "ООО",
+            "Дата последнего изменения": "2021-06-20 00:00:00"
+        }
+
+        print("Создание компании из JSON данных:")
+        try:
+            company_from_json = AsyncCSVReader.create_company_from_json(sample_json)
+            print(f"Создана компания: {company_from_json['name']} (ИНН: {company_from_json['inn']})")
+            print(f"Размер компании: {company_from_json['company_size_final']}")
+            print(f"Отрасль: {company_from_json['main_industry']}")
+            print(f"Меры поддержки: {company_from_json['support_measures']}")
+            print(f"Статус подтверждения: {company_from_json['confirmation_status']}")
+
+            print("\n--- Созданная компания в формате JSON ---")
+            print(json.dumps(company_from_json, ensure_ascii=False, indent=2, default=str))
+
+        except Exception as e:
+            print(f"Ошибка создания компании из JSON: {e}")
+
+        print("\n=== Пример 8.1: Работа с JSON данными (новые ключи) ===")
+        # Пример JSON данных компании с новыми ключами
+        sample_json_new_keys = {
+            "inn": 7721840520,
+            "name": "ООО \"РУ КМЗ\"",
+            "main_industry": "Машиностроение",
+            "sub_industry": "Металлообработка",
+            "support_measures": "Да",
+            "special_status": "Сведения отсутствуют",
+            "revenue": 1320000,
+            "net_profit": 92000,
+            "staff_count": 125,
+            "payroll_fund": 90000,
+            "avg_salary": 72,
+            "moscow_taxes": 29800,
+            "profit_tax": 16000,
+            "property_tax": 5000,
+            "land_tax": 1250,
+            "income_tax": 6800,
+            "transport_tax": 320,
+            "other_taxes": 530,
+            "excise_taxes": 0,
+            "moscow_investments": 18000,
+            "export_volume": 280000,
+            "capacity_utilization": 80,
+            "has_export": "Да",
+            "prev_year_export": 200,
+            "production_coordinates": "55.802968. 37.580095",
+            "district": "САО",
+            "area": "Савеловский",
+            "year": 2021,
+            "confirmed": "Подтвержден",
+            "confirmed_by": "Росстат",
+            "organization_type": "ООО",
+            "last_modified": "2021-06-20 00:00:00"
+        }
+
+        print("Создание компании из JSON данных с новыми ключами:")
+        try:
+            company_from_json_new = AsyncCSVReader.create_company_from_json(sample_json_new_keys)
+            print(f"Создана компания: {company_from_json_new['name']} (ИНН: {company_from_json_new['inn']})")
+            print(f"Размер компании: {company_from_json_new['company_size_final']}")
+            print(f"Отрасль: {company_from_json_new['main_industry']}")
+            print(f"Меры поддержки: {company_from_json_new['support_measures']}")
+            print(f"Статус подтверждения: {company_from_json_new['confirmation_status']}")
+
+            print("\n--- Созданная компания с новыми ключами в формате JSON ---")
+            print(json.dumps(company_from_json_new, ensure_ascii=False, indent=2, default=str))
+
+        except Exception as e:
+            print(f"Ошибка создания компании из JSON с новыми ключами: {e}")
+
+        print("\n=== Пример 8.2: Анализ особых статусов ===")
         companies_with_special_status = [c for c in companies if c.get("Наличие особого статуса") != "Сведения отсутствуют"]
         print(f"Компаний с особым статусом: {len(companies_with_special_status)}")
 
