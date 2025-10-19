@@ -34,6 +34,7 @@ app.include_router(api_v1, prefix="/api")
 
 # CORS settings
 origins = [
+    "https://pk488cswgkso4ooosgkokc8w.ruzserver.ru/"
     "https://ruzserver.ru",
     "https://okto.ruzserver.ru",
     "https://www.ruzserver.ru",
